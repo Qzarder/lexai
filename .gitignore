@@ -4,3 +4,8 @@ dist/
 .env.local
 *.log
 backend/.env
+backend/__pycache__/
+backend/logs/
+ngrok-bin/
+ngrok-new.zip
+.claude/
