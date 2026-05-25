@@ -563,3 +563,63 @@ async def admin_stats():
         p["unique_users"] = len(p.pop("users"))
 
     return JSONResponse(content={"by_user": users, "by_plan": plans})
+
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms():
+    return HTMLResponse(content="""
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LexAI — Условия использования</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px;margin:40px auto;padding:0 20px;color:#1a1a2e;line-height:1.7}h1{color:#4f46e5}h2{color:#374151;margin-top:2em}a{color:#4f46e5}</style></head>
+<body>
+<h1>Условия использования LexAI</h1>
+<p><em>Последнее обновление: май 2025</em></p>
+<h2>1. Общие положения</h2>
+<p>LexAI («Сервис») предоставляет инструменты для анализа юридических документов с помощью искусственного интеллекта. Используя Сервис, вы соглашаетесь с настоящими Условиями.</p>
+<h2>2. Не является юридической консультацией</h2>
+<p>Результаты анализа LexAI носят исключительно информационный характер и <strong>не являются юридической консультацией</strong>. Для принятия юридически значимых решений обращайтесь к лицензированному юристу.</p>
+<h2>3. Передача данных</h2>
+<p>Текст загруженных документов передаётся на серверы Anthropic (США) для обработки моделью Claude AI. Anthropic не использует данные API для обучения моделей согласно своей политике конфиденциальности.</p>
+<h2>4. Ограничения использования</h2>
+<p>Запрещается загружать документы, содержащие государственную тайну, персональные данные третьих лиц без их согласия, а также материалы, раскрытие которых запрещено законом или условиями NDA.</p>
+<h2>5. Ограничение ответственности</h2>
+<p>Сервис предоставляется «как есть». LexAI не несёт ответственности за убытки, возникшие в результате использования результатов анализа.</p>
+<h2>6. Контакты</h2>
+<p>По вопросам: <a href="mailto:support@lexai.app">support@lexai.app</a></p>
+</body></html>
+""")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy():
+    return HTMLResponse(content="""
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LexAI — Политика конфиденциальности</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px;margin:40px auto;padding:0 20px;color:#1a1a2e;line-height:1.7}h1{color:#4f46e5}h2{color:#374151;margin-top:2em}a{color:#4f46e5}</style></head>
+<body>
+<h1>Политика конфиденциальности LexAI</h1>
+<p><em>Последнее обновление: май 2025</em></p>
+<h2>1. Какие данные мы собираем</h2>
+<ul>
+<li>Данные Google-аккаунта при авторизации (имя, email, фото)</li>
+<li>Метаданные анализов (тип документа, юрисдикция, дата) — без содержимого документов</li>
+<li>Технические логи (токены, время запроса, ошибки) без персональных данных</li>
+</ul>
+<h2>2. Что мы НЕ храним</h2>
+<p>LexAI <strong>не сохраняет содержимое ваших документов</strong>. Текст документа используется только для генерации анализа и не записывается в базы данных.</p>
+<h2>3. Передача данных третьим лицам</h2>
+<ul>
+<li><strong>Anthropic</strong> — текст документа для анализа (не используется для обучения моделей)</li>
+<li><strong>Google Firebase</strong> — авторизация и хранение истории анализов</li>
+<li><strong>Tavily</strong> — поисковые запросы для поиска правовых источников (без текста документа)</li>
+</ul>
+<h2>4. Безопасность</h2>
+<p>Передача данных осуществляется по зашифрованному соединению HTTPS. API-ключи хранятся только на серверах LexAI и никогда не передаются на устройство пользователя.</p>
+<h2>5. Ваши права</h2>
+<p>Вы можете запросить удаление своих данных, написав на <a href="mailto:support@lexai.app">support@lexai.app</a>.</p>
+<h2>6. Контакты</h2>
+<p><a href="mailto:support@lexai.app">support@lexai.app</a></p>
+</body></html>
+""")
