@@ -22,11 +22,84 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 MAX_DOC_BYTES = 2_000_000
 MAX_SEARCH_ROUNDS = 3   # max tool-call iterations per analysis
 
-# Legal sources by type (for Tavily)
-LEGAL_DOMAINS = {
-    "legislation":    ["pravo.gov.ru"],
-    "supreme_court":  ["vsrf.ru", "ksrf.ru"],
-    "court_practice": ["sudact.ru"],
+# Legal sources by jurisdiction and type (for Tavily domain filtering)
+JURISDICTION_DOMAINS = {
+    "RU": {
+        "legislation":    ["pravo.gov.ru"],
+        "supreme_court":  ["vsrf.ru", "ksrf.ru"],
+        "court_practice": ["sudact.ru"],
+        "arbitration":    [],  # handled via direct KAD API
+    },
+    "KZ": {
+        "legislation":    ["adilet.zan.kz"],
+        "supreme_court":  ["sud.kz"],
+        "court_practice": ["sud.kz"],
+        "arbitration":    ["sud.kz"],
+    },
+    "EU": {
+        "legislation":    ["eur-lex.europa.eu"],
+        "supreme_court":  ["curia.europa.eu"],
+        "court_practice": ["curia.europa.eu", "e-justice.europa.eu"],
+        "arbitration":    ["eur-lex.europa.eu"],
+    },
+    "US": {
+        "legislation":    ["law.cornell.edu", "govinfo.gov", "congress.gov"],
+        "supreme_court":  ["supremecourt.gov"],
+        "court_practice": ["courtlistener.com", "justia.com"],
+        "arbitration":    ["courtlistener.com"],
+    },
+    "UK": {
+        "legislation":    ["legislation.gov.uk"],
+        "supreme_court":  ["judiciary.gov.uk", "supremecourt.uk"],
+        "court_practice": ["bailii.org", "judiciary.gov.uk"],
+        "arbitration":    ["bailii.org"],
+    },
+    "DE": {
+        "legislation":    ["gesetze-im-internet.de", "dejure.org"],
+        "supreme_court":  ["bundesverfassungsgericht.de", "bundesgerichtshof.de"],
+        "court_practice": ["bundesgerichtshof.de", "dejure.org"],
+        "arbitration":    ["bundesgerichtshof.de"],
+    },
+}
+
+# Source descriptions per jurisdiction for the tool prompt
+JURISDICTION_SOURCE_DESCRIPTIONS = {
+    "RU": (
+        "legislation — тексты законов (pravo.gov.ru); "
+        "supreme_court — Пленумы ВС и Обзоры судебной практики (vsrf.ru, ksrf.ru); "
+        "court_practice — решения судов общей юрисдикции (sudact.ru); "
+        "arbitration — картотека арбитражных дел (kad.arbitr.ru)"
+    ),
+    "KZ": (
+        "legislation — законодательство РК (adilet.zan.kz); "
+        "supreme_court — Верховный суд РК (sud.kz); "
+        "court_practice — судебная практика (sud.kz); "
+        "arbitration — арбитражные решения (sud.kz)"
+    ),
+    "EU": (
+        "legislation — EU laws and directives (eur-lex.europa.eu); "
+        "supreme_court — Court of Justice of the EU (curia.europa.eu); "
+        "court_practice — EU court decisions (curia.europa.eu, e-justice.europa.eu); "
+        "arbitration — EU legal database (eur-lex.europa.eu)"
+    ),
+    "US": (
+        "legislation — federal statutes and CFR (law.cornell.edu, govinfo.gov, congress.gov); "
+        "supreme_court — SCOTUS opinions (supremecourt.gov); "
+        "court_practice — federal and state case law (courtlistener.com, justia.com); "
+        "arbitration — federal court records (courtlistener.com)"
+    ),
+    "UK": (
+        "legislation — UK statutes and statutory instruments (legislation.gov.uk); "
+        "supreme_court — UK Supreme Court and judiciary (judiciary.gov.uk, supremecourt.uk); "
+        "court_practice — British and Irish case law (bailii.org); "
+        "arbitration — UK court decisions (bailii.org)"
+    ),
+    "DE": (
+        "legislation — Bundesgesetze (gesetze-im-internet.de, dejure.org); "
+        "supreme_court — Bundesverfassungsgericht and BGH (bundesverfassungsgericht.de, bundesgerichtshof.de); "
+        "court_practice — BGH Urteile (bundesgerichtshof.de, dejure.org); "
+        "arbitration — BGH Entscheidungen (bundesgerichtshof.de)"
+    ),
 }
 
 KAD_URL     = "https://kad.arbitr.ru/Kad/SearchInstances"
@@ -38,35 +111,35 @@ KAD_HEADERS = {
     "User-Agent":      "Mozilla/5.0 (compatible; LexAI/1.0)",
 }
 
-LEGAL_SEARCH_TOOL = {
-    "name": "search_legal_sources",
-    "description": (
-        "Search authoritative Russian legal sources. "
-        "Use this tool to find laws, Supreme Court positions, and court practice. "
-        "Make no more than 4 searches total. If a search returns an error or no results, "
-        "do NOT retry the same source — move on or proceed with available information."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Конкретный поисковый запрос на русском языке"
+def build_legal_search_tool(jurisdiction: str) -> dict:
+    source_desc = JURISDICTION_SOURCE_DESCRIPTIONS.get(
+        jurisdiction,
+        JURISDICTION_SOURCE_DESCRIPTIONS["US"]  # fallback
+    )
+    return {
+        "name": "search_legal_sources",
+        "description": (
+            f"Search authoritative legal sources for jurisdiction: {jurisdiction}. "
+            "Use this tool to find laws, court decisions, and legal practice. "
+            "Make no more than 4 searches total. If a search returns no results, "
+            "move on — do NOT retry the same query."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query in the language appropriate for the jurisdiction"
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["legislation", "supreme_court", "court_practice", "arbitration"],
+                    "description": source_desc
+                }
             },
-            "source": {
-                "type": "string",
-                "enum": ["legislation", "supreme_court", "court_practice", "arbitration"],
-                "description": (
-                    "legislation — тексты законов (pravo.gov.ru); "
-                    "supreme_court — Пленумы ВС и Обзоры судебной практики (vsrf.ru, ksrf.ru); "
-                    "court_practice — решения судов общей юрисдикции (sudact.ru); "
-                    "arbitration — картотека арбитражных дел (kad.arbitr.ru) — используй для коммерческих и процессуальных споров"
-                )
-            }
-        },
-        "required": ["query", "source"]
+            "required": ["query", "source"]
+        }
     }
-}
 
 # Token pricing per million tokens (update here when model changes)
 MODEL_PRICING = {
@@ -137,14 +210,15 @@ async def kad_search(query: str) -> str:
         return f"[Ошибка поиска в картотеке: {e}]"
 
 
-async def tavily_search(query: str, source: str) -> str:
-    if source == "arbitration":
+async def tavily_search(query: str, source: str, jurisdiction: str = "RU") -> str:
+    if source == "arbitration" and jurisdiction == "RU":
         return await kad_search(query)
 
     if not TAVILY_KEY:
-        return "[Поиск недоступен: TAVILY_API_KEY не задан]"
+        return "[Search unavailable: TAVILY_API_KEY not configured]"
 
-    domains = LEGAL_DOMAINS.get(source, [])
+    jur_domains = JURISDICTION_DOMAINS.get(jurisdiction, JURISDICTION_DOMAINS["US"])
+    domains = jur_domains.get(source, [])
     payload = {
         "api_key": TAVILY_KEY,
         "query": query,
@@ -211,6 +285,7 @@ async def analyze(request: Request):
     model       = body.get("model", "claude-sonnet-4-5")
     system      = body.get("system", "")
     max_tokens  = body.get("max_tokens", 8000)
+    jurisdiction = body.get("jurisdiction", "RU")
 
     meta        = body.get("meta", {})
     user_id     = meta.get("user_id", "unknown")
@@ -245,7 +320,7 @@ async def analyze(request: Request):
                     "temperature": 0,
                     "system":      system,
                     "messages":    messages,
-                    "tools":       [LEGAL_SEARCH_TOOL],
+                    "tools":       [build_legal_search_tool(jurisdiction)],
                 }
 
                 resp = await client.post(ANTHROPIC_URL, json=payload, headers=anthro_headers)
@@ -276,7 +351,7 @@ async def analyze(request: Request):
                         source = tool_input.get("source", "legislation")
                         log.info(f"Search [{source}]: {query}")
                         searches += 1
-                        result = await tavily_search(query, source)
+                        result = await tavily_search(query, source, jurisdiction)
                         tool_results.append({
                             "type":        "tool_result",
                             "tool_use_id": block["id"],
