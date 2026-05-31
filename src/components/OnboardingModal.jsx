@@ -6,7 +6,6 @@ export default function OnboardingModal({ onSelect }) {
     { code: "en", flag: "🇬🇧", label: "English",    sub: "Select language" },
     { code: "de", flag: "🇩🇪", label: "Deutsch",    sub: "Sprache wählen" },
     { code: "fr", flag: "🇫🇷", label: "Français",   sub: "Choisir la langue" },
-    { code: "zh", flag: "🇨🇳", label: "中文",        sub: "选择语言" },
     { code: "es", flag: "🇪🇸", label: "Español",    sub: "Seleccionar idioma" },
   ];
 

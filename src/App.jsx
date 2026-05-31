@@ -199,6 +199,7 @@ export default function App() {
         systemPrompt: sysPrompt,
         docText: combinedText,
         charLimit,
+        jurisdiction,
         meta,
         onProgress: (progress, hint) => {
           setStreamProgress(progress);

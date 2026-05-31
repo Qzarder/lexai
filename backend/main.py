@@ -1,14 +1,19 @@
 import os
+import io
 import httpx
 import json
 import logging
 import time
+import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from pypdf import PdfReader
+import docx2txt
 
 load_dotenv()
 
@@ -17,6 +22,9 @@ log = logging.getLogger("lexai")
 
 API_KEY      = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_KEY   = os.getenv("TAVILY_API_KEY")
+ADMIN_TOKEN  = os.getenv("ADMIN_TOKEN")  # required to access /admin/* endpoints
+# Comma-separated list of allowed web/app origins; "*" only if explicitly set
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()] or ["*"]
 TAVILY_URL   = "https://api.tavily.com/search"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 MAX_DOC_BYTES = 2_000_000
@@ -155,10 +163,18 @@ app = FastAPI(title="LexAI Proxy")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def require_admin(x_admin_token: str = Header(None)):
+    """Guard /admin/* endpoints. Requires ADMIN_TOKEN env to be set and matched."""
+    if not ADMIN_TOKEN:
+        raise HTTPException(503, "Admin endpoints disabled (ADMIN_TOKEN not configured)")
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(401, "Unauthorized")
 
 
 async def kad_search(query: str) -> str:
@@ -475,13 +491,114 @@ async def chat(request: Request):
     return JSONResponse(content=resp_data, status_code=resp.status_code)
 
 
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+
+# All declared UI languages, so OCR is accurate regardless of document language.
+OCR_LANGS = "rus+eng+deu+fra+spa"
+IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"}
+
+
+def _ocr_image_bytes(data: bytes) -> str:
+    """OCR a single image via tesseract (installed in the Docker image)."""
+    import pytesseract
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    return (pytesseract.image_to_string(img, lang=OCR_LANGS) or "").strip()
+
+
+def _ocr_pdf(data: bytes) -> str:
+    """Rasterize a scanned PDF and OCR each page."""
+    from pdf2image import convert_from_bytes
+    import pytesseract
+    pages = convert_from_bytes(data, dpi=200)
+    out = []
+    for page in pages:
+        out.append((pytesseract.image_to_string(page, lang=OCR_LANGS) or "").strip())
+    return "\n\n".join(p for p in out if p).strip()
+
+
+def _extract_pdf(data: bytes) -> str:
+    reader = PdfReader(io.BytesIO(data))
+    text = "\n\n".join((page.extract_text() or "") for page in reader.pages).strip()
+    # Scanned PDF: no embedded text layer → fall back to OCR
+    if len(text) < 20:
+        try:
+            ocr = _ocr_pdf(data)
+            if len(ocr) > len(text):
+                return ocr
+        except Exception as e:
+            log.warning(f"PDF OCR fallback failed: {type(e).__name__}: {e}")
+    return text
+
+
+def _extract_docx(data: bytes) -> str:
+    return (docx2txt.process(io.BytesIO(data)) or "").strip()
+
+
+def _extract_doc(data: bytes) -> str:
+    """Legacy binary .doc via antiword (installed in the Docker image)."""
+    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
+        tmp.write(data)
+        path = tmp.name
+    try:
+        out = subprocess.run(
+            ["antiword", path],
+            capture_output=True, timeout=30,
+        )
+        if out.returncode != 0:
+            raise RuntimeError(out.stderr.decode("utf-8", "replace")[:200] or "antiword failed")
+        return out.stdout.decode("utf-8", "replace").strip()
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+@app.post("/extract")
+async def extract(file: UploadFile = File(...)):
+    """Server-side text extraction. Handles PDF, DOCX, legacy DOC, and plain text.
+    Primary use: legacy .doc that clients cannot parse on-device."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (max 20 MB)")
+
+    name = (file.filename or "").lower()
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+
+    try:
+        if ext == "pdf":
+            text = _extract_pdf(data)
+        elif ext == "docx":
+            text = _extract_docx(data)
+        elif ext == "doc":
+            text = _extract_doc(data)
+        elif ext in IMAGE_EXTS:
+            text = _ocr_image_bytes(data)
+        else:
+            text = data.decode("utf-8", "replace").strip()
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"extract failed for {name}: {type(e).__name__}: {e}")
+        raise HTTPException(422, f"Could not extract text: {type(e).__name__}")
+
+    if not text:
+        raise HTTPException(422, "No text found (file may be a scan/image — needs OCR)")
+
+    return {"text": text, "chars": len(text), "format": ext or "txt"}
+
+
 @app.get("/admin/logs")
 async def admin_logs(
     limit: int = Query(100, ge=1, le=10000),
     user_id: str = Query(None),
     action: str = Query(None),
+    _: None = Depends(require_admin),
 ):
-    """Return recent log entries. Add auth before exposing publicly."""
+    """Return recent log entries. Requires X-Admin-Token header."""
     if not USAGE_LOG.exists():
         return JSONResponse(content={"entries": [], "total": 0})
 
@@ -522,8 +639,8 @@ async def admin_logs(
 
 
 @app.get("/admin/stats")
-async def admin_stats():
-    """Per-user and per-plan aggregated stats."""
+async def admin_stats(_: None = Depends(require_admin)):
+    """Per-user and per-plan aggregated stats. Requires X-Admin-Token header."""
     if not USAGE_LOG.exists():
         return JSONResponse(content={})
 

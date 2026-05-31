@@ -1,7 +1,7 @@
 const ANALYZE_URL = "/api/analyze";
 const CHAT_URL = "/api/chat";
 
-export async function analyzeDocument({ systemPrompt, docText, charLimit, meta, onProgress }) {
+export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisdiction, meta, onProgress }) {
   onProgress?.(10, "Отправляем документ...");
 
   const truncated = charLimit ? docText.slice(0, charLimit) : docText;
@@ -13,6 +13,7 @@ export async function analyzeDocument({ systemPrompt, docText, charLimit, meta, 
       max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: "user", content: `Analyze this document:\n\n${truncated}` }],
+      jurisdiction,  // drives backend web-search domain filtering
       meta,  // {user_id, plan, credits_deducted, docs:[{name,pages,chars}], total_chars}
     }),
   });

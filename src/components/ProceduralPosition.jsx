@@ -10,7 +10,6 @@ const LABELS = {
   en: { weakPoints: "Weak points",  noData: "No position data"     },
   de: { weakPoints: "Schwachstellen", noData: "Keine Daten"        },
   fr: { weakPoints: "Points faibles", noData: "Aucune donnée"      },
-  zh: { weakPoints: "弱点",           noData: "无数据"              },
   es: { weakPoints: "Puntos débiles", noData: "Sin datos"          },
 };
 
