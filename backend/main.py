@@ -6,9 +6,11 @@ import logging
 import time
 import subprocess
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Query, Header, Depends, UploadFile, File, Form
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -500,6 +502,11 @@ _OCR_LANG_MAP = {"ru": "rus", "en": "eng", "de": "deu", "fr": "fra", "es": "spa"
 OCR_DPI = 150  # lower DPI → smaller bitmaps → less peak RAM
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"}
 
+# Only one OCR job at a time: a single scan already uses most of the instance's
+# memory, so concurrent OCR would OOM and restart the whole service. Other
+# requests still run in parallel — they just don't queue behind OCR.
+_OCR_SEM = threading.Semaphore(1)
+
 
 def _ocr_lang(lang: str | None) -> str:
     return _OCR_LANG_MAP.get((lang or "").lower(), "rus+eng")
@@ -509,8 +516,9 @@ def _ocr_image_bytes(data: bytes, lang: str) -> str:
     """OCR a single image via tesseract (installed in the Docker image)."""
     import pytesseract
     from PIL import Image
-    img = Image.open(io.BytesIO(data))
-    return (pytesseract.image_to_string(img, lang=lang) or "").strip()
+    with _OCR_SEM:
+        img = Image.open(io.BytesIO(data))
+        return (pytesseract.image_to_string(img, lang=lang) or "").strip()
 
 
 def _ocr_pdf(data: bytes, lang: str) -> str:
@@ -523,11 +531,12 @@ def _ocr_pdf(data: bytes, lang: str) -> str:
     import pytesseract
     n = int(pdfinfo_from_bytes(data).get("Pages", 1))
     out = []
-    for i in range(1, n + 1):
-        pages = convert_from_bytes(data, dpi=OCR_DPI, first_page=i, last_page=i)
-        if not pages:
-            continue
-        out.append((pytesseract.image_to_string(pages[0], lang=lang) or "").strip())
+    with _OCR_SEM:
+        for i in range(1, n + 1):
+            pages = convert_from_bytes(data, dpi=OCR_DPI, first_page=i, last_page=i)
+            if not pages:
+                continue
+            out.append((pytesseract.image_to_string(pages[0], lang=lang) or "").strip())
     return "\n\n".join(p for p in out if p).strip()
 
 
@@ -569,6 +578,19 @@ def _extract_doc(data: bytes) -> str:
             pass
 
 
+def _extract_sync(ext: str, data: bytes, oclang: str) -> str:
+    """Blocking text extraction, dispatched to a worker thread by /extract."""
+    if ext == "pdf":
+        return _extract_pdf(data, oclang)
+    if ext == "docx":
+        return _extract_docx(data)
+    if ext == "doc":
+        return _extract_doc(data)
+    if ext in IMAGE_EXTS:
+        return _ocr_image_bytes(data, oclang)
+    return data.decode("utf-8", "replace").strip()
+
+
 @app.post("/extract")
 async def extract(file: UploadFile = File(...), lang: str = Form("")):
     """Server-side text extraction. Handles PDF, DOCX, legacy DOC, and plain text.
@@ -584,16 +606,9 @@ async def extract(file: UploadFile = File(...), lang: str = Form("")):
     oclang = _ocr_lang(lang)
 
     try:
-        if ext == "pdf":
-            text = _extract_pdf(data, oclang)
-        elif ext == "docx":
-            text = _extract_docx(data)
-        elif ext == "doc":
-            text = _extract_doc(data)
-        elif ext in IMAGE_EXTS:
-            text = _ocr_image_bytes(data, oclang)
-        else:
-            text = data.decode("utf-8", "replace").strip()
+        # Extraction (especially OCR) is blocking CPU work; run it in a thread
+        # so a single slow scan doesn't freeze the event loop for everyone else.
+        text = await run_in_threadpool(_extract_sync, ext, data, oclang)
     except HTTPException:
         raise
     except Exception as e:
