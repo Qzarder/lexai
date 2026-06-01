@@ -42,6 +42,42 @@ export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisd
   };
 }
 
+// Cheap pre-flight: ask the model which jurisdiction the document is drafted for,
+// before the user spends credits on a full analysis. Uses /chat (no web search,
+// tiny max_tokens). Fails open — returns null on any error so analysis proceeds.
+export async function detectJurisdiction({ docText, jurisdictionCode, jurLabel, userId }) {
+  const excerpt = docText.slice(0, 3000);
+  const system =
+    "You identify which jurisdiction a legal document is drafted for. " +
+    "Allowed codes: RU=Russia, EU=European Union, US=United States, UK=United Kingdom, " +
+    "DE=Germany, KZ=Kazakhstan, LATAM=Latin America, OTHER=anything else or unclear. " +
+    "Judge by the governing-law clause, cited statutes, currency, addresses, court names and legal terminology. " +
+    'Respond with ONLY a compact JSON object and nothing else: {"code":"<one allowed code>","name":"<short jurisdiction name>"}.';
+  const user = `Selected jurisdiction: ${jurLabel} (${jurisdictionCode}).\n\nDocument excerpt:\n${excerpt}`;
+
+  try {
+    const res = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 80,
+        system,
+        messages: [{ role: "user", content: user }],
+        meta: { user_id: userId, plan: "detect" },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.content?.map(b => b.text || "").join("") || "";
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1) return null;
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
 export async function chatWithConsultant({ systemPrompt, messages, meta }) {
   const res = await fetch(CHAT_URL, {
     method: "POST",

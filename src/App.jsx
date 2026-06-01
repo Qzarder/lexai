@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { LANGS, JURISDICTIONS, DOC_TYPES, PROCEDURAL_DOC_TYPES } from "./constants/langs";
 import { UI } from "./constants/ui";
 import { analysisSystemPrompt, proceduralSystemPrompt } from "./prompts";
-import { analyzeDocument } from "./api";
+import { analyzeDocument, detectJurisdiction } from "./api";
 import { parseFile, ACCEPT, FILE_LABELS } from "./fileParser";
 import { scoreColor } from "./utils";
 
@@ -55,6 +55,8 @@ export default function App() {
   const [tab, setTab] = useState(0);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [jurWarn, setJurWarn] = useState(null);
   const [streamProgress, setStreamProgress] = useState(0);
   const [streamHint, setStreamHint] = useState("");
   const [error, setError] = useState("");
@@ -165,6 +167,29 @@ export default function App() {
       return;
     }
 
+    // Pre-flight jurisdiction check — runs before any credits are spent.
+    setError("");
+    setChecking(true);
+    const detected = await detectJurisdiction({
+      docText: combinedText,
+      jurisdictionCode: jurisdiction,
+      jurLabel,
+      userId: getUserId(),
+    });
+    setChecking(false);
+
+    const knownCodes = JURISDICTIONS.map(j => j.code);
+    if (detected?.code && detected.code !== "OTHER" && detected.code !== jurisdiction && knownCodes.includes(detected.code)) {
+      setJurWarn(detected);   // open modal — no credits spent until the user decides
+      return;
+    }
+
+    runAnalysis(jurisdiction);
+  };
+
+  const runAnalysis = async (jurCode) => {
+    const jl = JURISDICTIONS.find(j => j.code === jurCode)?.label || jurCode;
+
     setLoading(true); setError(""); setResult(null); setStreamProgress(0); setStreamHint("");
 
     // Fake progress: slowly crawl from 12% to 70% while backend works
@@ -184,8 +209,8 @@ export default function App() {
 
     try {
       const sysPrompt = mode === "procedural"
-        ? proceduralSystemPrompt(jurLabel, jurisdiction, docTypes[docType], lang)
-        : analysisSystemPrompt(jurLabel, jurisdiction, docTypes[docType], lang);
+        ? proceduralSystemPrompt(jl, jurCode, docTypes[docType], lang)
+        : analysisSystemPrompt(jl, jurCode, docTypes[docType], lang);
 
       const meta = {
         user_id:          getUserId(),
@@ -199,7 +224,7 @@ export default function App() {
         systemPrompt: sysPrompt,
         docText: combinedText,
         charLimit,
-        jurisdiction,
+        jurisdiction: jurCode,
         meta,
         onProgress: (progress, hint) => {
           setStreamProgress(progress);
@@ -222,8 +247,8 @@ export default function App() {
         date:              new Date().toISOString(),
         docNames:          docs.length > 0 ? docs.map(d => d.name) : [lang === "ru" ? "Вставленный текст" : "Pasted text"],
         mode,
-        jurisdiction,
-        jurisdictionLabel: jurLabel,
+        jurisdiction:      jurCode,
+        jurisdictionLabel: jl,
         docType:           docTypes[docType],
         overallRisk:       parsed.summary?.overallRisk,
         level:             parsed.position?.level || parsed.prospects?.level,
@@ -522,10 +547,12 @@ export default function App() {
           {/* Analyze button */}
           <button
             onClick={analyze}
-            disabled={loading || !hasContent}
-            style={{ width: "100%", padding: "10px", marginTop: 8, fontSize: 15, fontWeight: 500, cursor: loading || !hasContent ? "not-allowed" : "pointer", opacity: !hasContent ? 0.5 : 1, borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-primary)" }}
+            disabled={loading || checking || !hasContent}
+            style={{ width: "100%", padding: "10px", marginTop: 8, fontSize: 15, fontWeight: 500, cursor: loading || checking || !hasContent ? "not-allowed" : "pointer", opacity: !hasContent ? 0.5 : 1, borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-primary)" }}
           >
-            {loading
+            {checking
+              ? <><i className="ti ti-loader spin" style={{ fontSize: 15, marginRight: 6 }} aria-hidden="true" />{lang === "ru" ? "Проверяем юрисдикцию..." : "Checking jurisdiction..."}</>
+              : loading
               ? <><i className="ti ti-loader spin" style={{ fontSize: 15, marginRight: 6 }} aria-hidden="true" />{ui.analyzing}</>
               : analysisCost > creditsRemaining
                 ? (lang === "ru" ? "Недостаточно кредитов — обновить план" : "Not enough credits — upgrade")
@@ -671,6 +698,52 @@ export default function App() {
                 style={{ flex: 1, padding: "9px", fontSize: 13, fontWeight: 600, borderRadius: 9, border: "none", background: "#1a1a18", color: "#fff", cursor: "pointer" }}
               >
                 {lang === "ru" ? "Переключить" : "Switch"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {jurWarn && createPortal(
+        <div
+          onClick={() => setJurWarn(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: "1.5rem" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 16, padding: "1.5rem", width: "100%", maxWidth: 380, boxShadow: "0 8px 40px rgba(0,0,0,0.18)", border: "0.5px solid #e0e0da" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <i className="ti ti-alert-triangle" style={{ fontSize: 22, color: "#e67e22" }} />
+              <span style={{ fontSize: 15, fontWeight: 600 }}>
+                {lang === "ru" ? "Проверьте юрисдикцию" : "Check the jurisdiction"}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6, marginBottom: 18 }}>
+              {lang === "ru"
+                ? <>Документ, похоже, составлен для: <b>{jurWarn.name}</b>. Сейчас выбрана: <b>{jurLabel}</b>. Анализ в неверной юрисдикции будет неточным. Кредиты ещё не списаны.</>
+                : <>This document appears to be drafted for <b>{jurWarn.name}</b>, but <b>{jurLabel}</b> is selected. Analysis in the wrong jurisdiction will be inaccurate. No credits have been spent yet.</>}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                onClick={() => { const code = jurWarn.code; setJurisdiction(code); setJurWarn(null); runAnalysis(code); }}
+                style={{ width: "100%", padding: "10px", fontSize: 13, fontWeight: 600, borderRadius: 9, border: "none", background: "#1a1a18", color: "#fff", cursor: "pointer" }}
+              >
+                {lang === "ru" ? `Переключить на ${jurWarn.name} и анализировать` : `Switch to ${jurWarn.name} and analyze`}
+              </button>
+              <button
+                onClick={() => { setJurWarn(null); runAnalysis(jurisdiction); }}
+                style={{ width: "100%", padding: "10px", fontSize: 13, borderRadius: 9, border: "0.5px solid #ddd", background: "#f5f5f2", color: "#555", cursor: "pointer" }}
+              >
+                {lang === "ru" ? `Анализировать в ${jurLabel}` : `Analyze in ${jurLabel}`}
+              </button>
+              <button
+                onClick={() => setJurWarn(null)}
+                style={{ width: "100%", padding: "8px", fontSize: 12, borderRadius: 9, border: "none", background: "none", color: "#999", cursor: "pointer" }}
+              >
+                {lang === "ru" ? "Отмена" : "Cancel"}
               </button>
             </div>
           </div>
