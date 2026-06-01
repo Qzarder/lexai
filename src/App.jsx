@@ -99,7 +99,12 @@ export default function App() {
 
   const handleFiles = async (files) => {
     const labels = FILE_LABELS[lang] || FILE_LABELS.en;
-    const available = planCfg.maxDocs - docs.length;
+    if (Array.from(files).length === 0) return;
+
+    // Single-file plans: a newly chosen file replaces the current one
+    // instead of being silently rejected.
+    const replaceMode = planCfg.maxDocs === 1;
+    const available = replaceMode ? 1 : planCfg.maxDocs - docs.length;
     if (available <= 0) {
       if (plan === "free") { setShowPricing(true); return; }
       setError(lang === "ru" ? `Максимум ${planCfg.maxDocs} документа для вашего плана.` : `Max ${planCfg.maxDocs} documents for your plan.`);
@@ -144,7 +149,7 @@ export default function App() {
       }
     }
 
-    if (newDocs.length > 0) setDocs(prev => [...prev, ...newDocs]);
+    if (newDocs.length > 0) setDocs(prev => replaceMode ? newDocs : [...prev, ...newDocs]);
     setFileParsing(false);
     setFileParsingHint("");
   };
