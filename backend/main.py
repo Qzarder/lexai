@@ -25,6 +25,10 @@ log = logging.getLogger("lexai")
 API_KEY      = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_KEY   = os.getenv("TAVILY_API_KEY")
 ADMIN_TOKEN  = os.getenv("ADMIN_TOKEN")  # required to access /admin/* endpoints
+# Optional RU proxy for kad.arbitr.ru (geoblocked outside Russia). Accepts
+# http://user:pass@host:port or socks5://user:pass@host:port. When unset, the
+# direct request runs and returns the geoblock notice from non-RU IPs.
+KAD_PROXY    = os.getenv("KAD_PROXY")
 # Comma-separated list of allowed web/app origins; "*" only if explicitly set
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()] or ["*"]
 TAVILY_URL   = "https://api.tavily.com/search"
@@ -193,11 +197,14 @@ async def kad_search(query: str) -> str:
         "WithVKS":      False,
         "WithSPbGS":    False,
     }
+    client_kwargs = {"timeout": 25}
+    if KAD_PROXY:
+        client_kwargs["proxy"] = KAD_PROXY
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(**client_kwargs) as client:
             resp = await client.post(KAD_URL, json=payload, headers=KAD_HEADERS)
         if resp.status_code == 451:
-            return "[kad.arbitr.ru: геоблок — доступен только с российских IP. Используйте российский VPS или прокси.]"
+            return "[kad.arbitr.ru: геоблок — доступен только с российских IP. Задайте рабочий KAD_PROXY (российский HTTP/SOCKS5-прокси).]"
         if resp.status_code != 200:
             log.warning(f"kad.arbitr.ru returned {resp.status_code}")
             return f"[kad.arbitr.ru недоступен: HTTP {resp.status_code}]"
