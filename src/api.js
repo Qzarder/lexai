@@ -10,7 +10,7 @@ export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisd
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      max_tokens: 8000,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: "user", content: `Analyze this document:\n\n${truncated}` }],
       jurisdiction,  // drives backend web-search domain filtering
