@@ -58,7 +58,6 @@ export default function App() {
   const [checking, setChecking] = useState(false);
   const [jurWarn, setJurWarn] = useState(null);
   const [streamProgress, setStreamProgress] = useState(0);
-  const [streamHint, setStreamHint] = useState("");
   const [error, setError] = useState("");
   const [plan, setPlan] = useState("free");
   const [showPricing, setShowPricing] = useState(false);
@@ -190,21 +189,15 @@ export default function App() {
   const runAnalysis = async (jurCode) => {
     const jl = JURISDICTIONS.find(j => j.code === jurCode)?.label || jurCode;
 
-    setLoading(true); setError(""); setResult(null); setStreamProgress(0); setStreamHint("");
+    setLoading(true); setError(""); setResult(null); setStreamProgress(0);
 
     // Fake progress: slowly crawl from 12% to 70% while backend works
     setStreamProgress(12);
-    const hints = lang === "ru"
-      ? ["Ищем в базе законодательства...", "Проверяем позиции Верховного суда...", "Анализируем судебную практику...", "Формируем результат..."]
-      : ["Searching legislation...", "Checking Supreme Court positions...", "Analyzing court practice...", "Generating result..."];
-    let hintIdx = 0;
     const progressTimer = setInterval(() => {
       setStreamProgress(p => {
         if (p >= 68) { clearInterval(progressTimer); return p; }
         return p + (Math.random() * 2 + 1);
       });
-      setStreamHint(hints[hintIdx % hints.length]);
-      hintIdx++;
     }, 3500);
 
     try {
@@ -226,9 +219,8 @@ export default function App() {
         charLimit,
         jurisdiction: jurCode,
         meta,
-        onProgress: (progress, hint) => {
+        onProgress: (progress) => {
           setStreamProgress(progress);
-          setStreamHint(hint);
         },
       });
 
@@ -237,7 +229,6 @@ export default function App() {
       setCreditsUsed(getCreditsUsed());
       setBonusCredits(getBonusCredits());
       setStreamProgress(100);
-      setStreamHint("");
       setResult(parsed);
       setTab(0);
 
@@ -567,7 +558,7 @@ export default function App() {
           {loading && (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-                <span>{streamHint}</span>
+                <span>{lang === "ru" ? "Анализируем документ..." : "Analyzing document..."}</span>
                 <span>{Math.round(streamProgress)}%</span>
               </div>
               <div style={{ height: 4, background: "var(--color-border-tertiary)", borderRadius: 2 }}>
