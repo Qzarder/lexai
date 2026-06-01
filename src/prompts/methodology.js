@@ -28,6 +28,9 @@ For every document analyze at minimum:
 - If a research tool is not connected, every cite is from training knowledge — prefix with [TRAINING DATA — verify against current source]
 - When uncertain about post-cutoff changes: state "This may have changed — verify with current sources"
 
+### Jurisdiction check
+Determine which jurisdiction/country the document was actually drafted under, judging by the governing-law clause, cited statutes, currency, addresses, and legal terminology. Put that jurisdiction's name in jurisdictionCheck.documentJurisdiction (in the output language). Set jurisdictionCheck.matchesSelected to false ONLY when the document is clearly drafted for a different jurisdiction than the active jurisdiction specified in the system prompt; otherwise true.
+
 ### Output format
 Respond in valid JSON only. No preamble, no markdown fences, no commentary outside the JSON structure.
 Return exactly this structure:
@@ -46,6 +49,10 @@ Return exactly this structure:
     "verdict": "one sentence verdict",
     "keyIssues": ["issue 1", "issue 2"],
     "recommendation": "one paragraph recommendation"
+  },
+  "jurisdictionCheck": {
+    "documentJurisdiction": "name of the jurisdiction the document was actually drafted for",
+    "matchesSelected": true
   }
 }
 

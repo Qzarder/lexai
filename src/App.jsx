@@ -552,6 +552,16 @@ export default function App() {
           {/* Results */}
           {result && (
             <div style={{ marginTop: "1.5rem" }}>
+              {result.jurisdictionCheck?.matchesSelected === false && (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "0.85rem 1rem", background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: "var(--border-radius-lg)", marginBottom: "1rem" }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: "#b45309", flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                  <div style={{ fontSize: 13, color: "#78350f", lineHeight: 1.5 }}>
+                    {lang === "ru"
+                      ? <>Возможно, выбрана не та юрисдикция. Документ составлен для: <b>{result.jurisdictionCheck.documentJurisdiction}</b>, а выбрана <b>{jurLabel}</b>. Переключите юрисдикцию и проанализируйте заново для точного результата.</>
+                      : <>The selected jurisdiction may be wrong. This document appears to be drafted for <b>{result.jurisdictionCheck.documentJurisdiction}</b>, but <b>{jurLabel}</b> is selected. Switch the jurisdiction and re-analyze for an accurate result.</>}
+                  </div>
+                </div>
+              )}
               {(() => {
                 const levelKey = mode === "procedural" ? result.position?.level : result.summary?.overallRisk;
                 const verdict  = mode === "procedural" ? result.position?.verdict : result.summary?.verdict;

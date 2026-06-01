@@ -87,8 +87,14 @@ Return exactly this structure:
     "verdict": "one sentence overall prognosis",
     "proceduralIssues": ["issue 1", "issue 2"],
     "recommendation": "concrete actionable recommendation for the attorney. End with: This analysis is for informational purposes only and does not constitute legal advice."
+  },
+  "jurisdictionCheck": {
+    "documentJurisdiction": "name of the jurisdiction the document was actually drafted for",
+    "matchesSelected": true
   }
 }
+
+JURISDICTION CHECK: Determine which jurisdiction/country the document was actually drafted under (governing-law clause, cited procedural codes, court names, terminology). Put that jurisdiction's name in jurisdictionCheck.documentJurisdiction (in the output language). Set jurisdictionCheck.matchesSelected to false ONLY when the document is clearly drafted for a different jurisdiction than the active jurisdiction above; otherwise true.
 
 Where:
 - position.level: strong=well-founded basis, moderate=arguable but has gaps, weak=significant problems, insufficient=no viable basis
