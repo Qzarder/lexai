@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, Query, Header, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Query, Header, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -493,37 +493,51 @@ async def chat(request: Request):
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
-# All declared UI languages, so OCR is accurate regardless of document language.
-OCR_LANGS = "rus+eng+deu+fra+spa"
+# Map the UI language to a single tesseract model. Loading all five models at
+# once exceeds the 512 MB instance and triggers OOM, so OCR runs in the one
+# language the client already selected (falls back to rus+eng when unknown).
+_OCR_LANG_MAP = {"ru": "rus", "en": "eng", "de": "deu", "fr": "fra", "es": "spa"}
+OCR_DPI = 150  # lower DPI → smaller bitmaps → less peak RAM
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"}
 
 
-def _ocr_image_bytes(data: bytes) -> str:
+def _ocr_lang(lang: str | None) -> str:
+    return _OCR_LANG_MAP.get((lang or "").lower(), "rus+eng")
+
+
+def _ocr_image_bytes(data: bytes, lang: str) -> str:
     """OCR a single image via tesseract (installed in the Docker image)."""
     import pytesseract
     from PIL import Image
     img = Image.open(io.BytesIO(data))
-    return (pytesseract.image_to_string(img, lang=OCR_LANGS) or "").strip()
+    return (pytesseract.image_to_string(img, lang=lang) or "").strip()
 
 
-def _ocr_pdf(data: bytes) -> str:
-    """Rasterize a scanned PDF and OCR each page."""
-    from pdf2image import convert_from_bytes
+def _ocr_pdf(data: bytes, lang: str) -> str:
+    """Rasterize a scanned PDF and OCR it one page at a time.
+
+    Converting every page at once is what blew the memory limit, so each page
+    is rendered, OCR'd, and released before moving to the next.
+    """
+    from pdf2image import convert_from_bytes, pdfinfo_from_bytes
     import pytesseract
-    pages = convert_from_bytes(data, dpi=200)
+    n = int(pdfinfo_from_bytes(data).get("Pages", 1))
     out = []
-    for page in pages:
-        out.append((pytesseract.image_to_string(page, lang=OCR_LANGS) or "").strip())
+    for i in range(1, n + 1):
+        pages = convert_from_bytes(data, dpi=OCR_DPI, first_page=i, last_page=i)
+        if not pages:
+            continue
+        out.append((pytesseract.image_to_string(pages[0], lang=lang) or "").strip())
     return "\n\n".join(p for p in out if p).strip()
 
 
-def _extract_pdf(data: bytes) -> str:
+def _extract_pdf(data: bytes, lang: str) -> str:
     reader = PdfReader(io.BytesIO(data))
     text = "\n\n".join((page.extract_text() or "") for page in reader.pages).strip()
     # Scanned PDF: no embedded text layer → fall back to OCR
     if len(text) < 20:
         try:
-            ocr = _ocr_pdf(data)
+            ocr = _ocr_pdf(data, lang)
             if len(ocr) > len(text):
                 return ocr
         except Exception as e:
@@ -556,7 +570,7 @@ def _extract_doc(data: bytes) -> str:
 
 
 @app.post("/extract")
-async def extract(file: UploadFile = File(...)):
+async def extract(file: UploadFile = File(...), lang: str = Form("")):
     """Server-side text extraction. Handles PDF, DOCX, legacy DOC, and plain text.
     Primary use: legacy .doc that clients cannot parse on-device."""
     data = await file.read()
@@ -567,16 +581,17 @@ async def extract(file: UploadFile = File(...)):
 
     name = (file.filename or "").lower()
     ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    oclang = _ocr_lang(lang)
 
     try:
         if ext == "pdf":
-            text = _extract_pdf(data)
+            text = _extract_pdf(data, oclang)
         elif ext == "docx":
             text = _extract_docx(data)
         elif ext == "doc":
             text = _extract_doc(data)
         elif ext in IMAGE_EXTS:
-            text = _ocr_image_bytes(data)
+            text = _ocr_image_bytes(data, oclang)
         else:
             text = data.decode("utf-8", "replace").strip()
     except HTTPException:
