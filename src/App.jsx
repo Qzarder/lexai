@@ -41,6 +41,7 @@ import ProceduralProspects from "./components/ProceduralProspects";
 import PricingModal from "./components/PricingModal";
 import ConsentModal from "./components/ConsentModal";
 import OnboardingModal from "./components/OnboardingModal";
+import Landing from "./components/Landing";
 import PrivacyBar from "./components/PrivacyBar";
 import HistoryPanel from "./components/HistoryPanel";
 import { saveToHistory } from "./history";
@@ -63,6 +64,7 @@ export default function App() {
   const [showPricing, setShowPricing] = useState(false);
   const [showCreditPacks, setShowCreditPacks] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
+  const [landingDone, setLandingDone] = useState(() => localStorage.getItem("lexai_seen_landing") === "1");
   const [consentGiven, setConsentGiven] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [fileParsing, setFileParsing] = useState(false);
@@ -281,6 +283,21 @@ export default function App() {
 
   const creditPct = Math.round((creditsRemaining / planCfg.credits) * 100);
   const creditColor = creditPct > 40 ? "var(--color-text-success)" : creditPct > 15 ? "var(--color-text-warning)" : "var(--color-text-danger)";
+
+  if (!landingDone) {
+    return (
+      <Landing
+        lang={lang}
+        setLang={setLang}
+        onStart={() => {
+          localStorage.setItem("lexai_seen_landing", "1");
+          setLandingDone(true);
+          setOnboardingDone(true);   // landing already picked the language
+          setShowConsent(true);      // go straight to the consent step
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{ fontFamily: "var(--font-sans)", maxWidth: 680, margin: "0 auto", padding: "1rem 0" }}>
