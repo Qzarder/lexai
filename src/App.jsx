@@ -271,7 +271,7 @@ export default function App() {
     <RiskChecklist risks={result?.risks} />,
     <Comments comments={result?.comments} />,
     <LegalRefs legalRefs={result?.legalRefs} />,
-    <Summary summary={result?.summary} lang={lang} />,
+    <Summary summary={result?.summary} scoring={result?.scoring} lang={lang} />,
     <Consultant
       jurLabel={jurLabel}
       jurisdictionCode={jurisdiction}
