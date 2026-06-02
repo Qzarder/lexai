@@ -608,10 +608,18 @@ export default function App() {
                 const levelKey = mode === "procedural" ? result.position?.level : result.summary?.overallRisk;
                 const verdict  = mode === "procedural" ? result.position?.verdict : result.summary?.verdict;
                 const badge    = RISK_BADGE[levelKey] || RISK_BADGE.medium;
+                const idx      = mode !== "procedural" && typeof result.scoring?.riskIndex === "number" ? result.scoring.riskIndex : null;
                 return (
                   <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "1rem", background: badge.bg, borderRadius: "var(--border-radius-lg)", marginBottom: "1rem", border: `1px solid ${badge.border}` }}>
-                    <div style={{ flexShrink: 0, padding: "5px 12px", background: "#fff", border: `1px solid ${badge.border}`, borderRadius: 20, fontSize: 12, fontWeight: 700, color: badge.color, whiteSpace: "nowrap" }}>
-                      {lang === "ru" ? badge.ru : badge.en}
+                    <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <div style={{ padding: "5px 12px", background: "#fff", border: `1px solid ${badge.border}`, borderRadius: 20, fontSize: 12, fontWeight: 700, color: badge.color, whiteSpace: "nowrap" }}>
+                        {lang === "ru" ? badge.ru : badge.en}
+                      </div>
+                      {idx != null && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: badge.color, whiteSpace: "nowrap" }}>
+                          {lang === "ru" ? "Индекс" : "Index"} {idx.toFixed(2)}
+                        </div>
+                      )}
                     </div>
                     <div style={{ fontSize: 14, color: "#1a1a18", lineHeight: 1.5 }}>{verdict}</div>
                   </div>
