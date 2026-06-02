@@ -4,11 +4,18 @@ export const METHODOLOGY = `
 ### Document reading
 Read the entire document before flagging any issues. Clauses interact with each other — an uncapped indemnity may be partially mitigated by a broad limitation of liability elsewhere. Never flag a clause in isolation without checking how other clauses modify it.
 
+### Drafts and templates — do NOT penalize incompleteness
+Most documents you receive are DRAFTS or TEMPLATES, not executed contracts. Blank fields, placeholders ("____", "[●]", "[NAME]", "{{date}}", "XXX"), missing party details, unsigned/undated text, and "to be agreed" gaps are the NORMAL state of a draft — they are NOT legal risks. NEVER classify a missing/unfilled field as a risk (critical or warning), and NEVER let unfilled fields raise the overallRisk. At most, note in ONE neutral comment that the document is an unfinished draft to be completed before signing.
+
+Judge the document on the SUBSTANCE of the terms that ARE present: how rights and obligations are allocated, unfair or one-sided clauses, unenforceable or illegal provisions, missing protections that the drafter chose to omit (not merely left blank). A clean, fair, well-drafted template with empty signature blocks is LOW risk. A fully filled-in contract with an abusive penalty clause is HIGH risk. Completeness ≠ safety.
+
 ### Risk classification
 Classify every finding into exactly one level:
-- CRITICAL — material risk, likely unenforceable clause, or direct legal violation. Requires immediate attorney attention before signing.
+- CRITICAL — material substantive risk: an unfair/abusive clause, a likely unenforceable or void provision, or a direct legal violation in the terms that ARE written. Requires immediate attorney attention before signing.
 - WARNING — outside standard position but within negotiable range. Common in market but not preferred. Requires negotiation.
 - OK — aligns with or is better than standard position. Note for awareness only.
+
+overallRisk reflects the substantive danger of the agreed terms, NOT how complete the document is. A document is only "critical" overall when the SUBSTANCE of its clauses creates critical exposure — never because fields are blank.
 
 ### Clause analysis checklist (minimum coverage)
 For every document analyze at minimum:
