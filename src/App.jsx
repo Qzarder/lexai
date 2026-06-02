@@ -220,12 +220,14 @@ export default function App() {
         docs: docs.map(d => ({ name: d.name, pages: d.pages, chars: d.chars })),
       };
 
+      const langNames = { ru: "Russian", en: "English", de: "German", fr: "French", es: "Spanish" };
       const { result: parsed } = await analyzeDocument({
         systemPrompt: sysPrompt,
         docText: combinedText,
         charLimit,
         jurisdiction: jurCode,
         meta,
+        outputLang: langNames[lang] || "Russian",
         onProgress: (progress) => {
           setStreamProgress(progress);
         },

@@ -1,10 +1,21 @@
 const ANALYZE_URL = "/api/analyze";
 const CHAT_URL = "/api/chat";
 
-export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisdiction, meta, onProgress }) {
+export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisdiction, meta, onProgress, outputLang = "Russian" }) {
   onProgress?.(10, "Отправляем документ...");
 
   const truncated = charLimit ? docText.slice(0, charLimit) : docText;
+
+  // Reinforce the output language right next to the document. The system
+  // prompt alone is often overridden by a long source document in another
+  // language, making the model mirror the document's language instead.
+  const userContent =
+    `Analyze this document. The required OUTPUT LANGUAGE is ${outputLang}.\n\n` +
+    `${truncated}\n\n` +
+    `--- END OF DOCUMENT ---\n` +
+    `REMINDER: Write your ENTIRE response — every JSON field value (verdict, ` +
+    `summaries, risks, recommendations) — in ${outputLang}, regardless of the ` +
+    `language the document is written in. Do NOT reply in the document's language.`;
 
   const res = await fetch(ANALYZE_URL, {
     method: "POST",
@@ -12,7 +23,7 @@ export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisd
     body: JSON.stringify({
       max_tokens: 16000,
       system: systemPrompt,
-      messages: [{ role: "user", content: `Analyze this document:\n\n${truncated}` }],
+      messages: [{ role: "user", content: userContent }],
       jurisdiction,  // drives backend web-search domain filtering
       meta,  // {user_id, plan, credits_deducted, docs:[{name,pages,chars}], total_chars}
     }),
