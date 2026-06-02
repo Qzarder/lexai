@@ -1,3 +1,5 @@
+import { computeScoring } from "./utils";
+
 const ANALYZE_URL = "/api/analyze";
 const CHAT_URL = "/api/chat";
 
@@ -45,8 +47,18 @@ export async function analyzeDocument({ systemPrompt, docText, charLimit, jurisd
   const end = stripped.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON in response");
 
+  const parsed = JSON.parse(stripped.slice(start, end + 1));
+
+  // Deterministic risk rollup: recompute the overall category from the model's
+  // per-axis severities so it is reproducible (same severities → same verdict).
+  const scoring = computeScoring(parsed?.scoring?.axes);
+  if (scoring.overallRisk) {
+    parsed.scoring = { ...(parsed.scoring || {}), ...scoring };
+    if (parsed.summary) parsed.summary.overallRisk = scoring.overallRisk;
+  }
+
   return {
-    result:     JSON.parse(stripped.slice(start, end + 1)),
+    result:     parsed,
     tokens_in:  data.tokens_in  || 0,
     tokens_out: data.tokens_out || 0,
     cost_usd:   data.cost_usd   || 0,
