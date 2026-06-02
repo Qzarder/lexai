@@ -10,7 +10,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 const SUPPORTED_TYPES = {
   "application/pdf": parsePdf,
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": parseDocx,
-  "application/msword": parseDocx,
+  "application/msword": parseDocLegacy,
   "text/plain": parseText,
   "text/rtf": parseText,
   "application/rtf": parseText,
@@ -70,6 +70,20 @@ async function parseDocx(file) {
   const { value } = await mammoth.extractRawText({ arrayBuffer: buf });
   if (!value.trim()) throw new Error("empty");
   return value;
+}
+
+// Legacy binary .doc cannot be parsed in the browser (mammoth handles only the
+// OpenXML .docx zip format). Send it to the backend /extract endpoint, which
+// uses antiword. /api/* proxies to the backend in dev and on Vercel.
+async function parseDocLegacy(file) {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const res = await fetch("/api/extract", { method: "POST", body: form });
+  if (!res.ok) throw new Error("doc");
+  const data = await res.json();
+  const text = (data.text || "").trim();
+  if (!text) throw new Error("empty");
+  return text;
 }
 
 async function parsePdf(file, { onProgress } = {}) {
